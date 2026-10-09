@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>丧尸房间逃生</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#129503;</text></svg>">
+<style>
+/* ================= 基础 ================= */
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height: 100%; }
+body {
+  background: #070605;
+  background-image:
+    radial-gradient(ellipse at 18% 8%,  rgba(96,18,12,.45) 0%, transparent 52%),
+    radial-gradient(ellipse at 84% 92%, rgba(58,10,6,.40)  0%, transparent 52%),
+    radial-gradient(ellipse at 50% 50%, rgba(20,14,10,.85) 0%, #070605 100%);
+  color: #e8e0d0;
+  min-height: 100vh;
+  font-family: "Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+  padding: 14px 10px 18px;
+  position: relative;
+  overflow-x: hidden;
+}
+/* 噪点 */
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* ================= 标题 ================= */
+.game-header { text-align:center; margin-bottom:10px; position:relative; z-index:1; }
+.game-title {
+  font-size: 30px; font-weight: 900; letter-spacing: 8px; color:#c0392b;
+  text-shadow: 0 2px 3px #000, 0 0 18px rgba(190,50,50,.65), 0 0 55px rgba(120,16,16,.5);
+  animation: titlePulse 4s ease-in-out infinite;
+}
+@keyframes titlePulse {
+  0%,100% { text-shadow:0 2px 3px #000, 0 0 18px rgba(180,50,50,.55), 0 0 50px rgba(120,16,16,.4); }
+  50%     { text-shadow:0 2px 3px #000, 0 0 30px rgba(220,70,70,.9),  0 0 75px rgba(150,26,26,.65); }
+}
+.game-subtitle { font-size:10px; color:#6b5d4d; letter-spacing:9px; margin-top:3px; }
+
+/* ================= 舞台 ================= */
+#wrap {
+  position:relative; z-index:1;
+  border-radius:8px; overflow:hidden;
+  border:2px solid #38281c;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.9),
+    0 0 45px rgba(120,20,10,.28),
+    0 0 90px rgba(0,0,0,.9),
+    0 14px 40px rgba(0,0,0,.85);
+}
+/* 扫描线 + 暗角 */
+#wrap::after {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:4;
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.72) 100%);
+}
+#cv { display:block; cursor:crosshair; }
+
+/* ================= HUD ================= */
+#hud {
+  display:flex; align-items:center; gap:8px; padding:7px 12px;
+  background: linear-gradient(180deg,#1c1611 0%, #100d0a 100%);
+  border-bottom:1px solid #33261c;
+  box-shadow: inset 0 -1px 0 rgba(255,140,60,.06);
+  user-select:none; flex-wrap:wrap;
+}
+.hud-card {
+  display:flex; align-items:center; gap:5px; white-space:nowrap;
+  background: rgba(255,255,255,.028);
+  border:1px solid #2e221a; border-radius:4px; padding:3px 9px;
+}
+.hud-card.warn { border-color:#7a2020; box-shadow:0 0 10px rgba(190,40,40,.35) inset; }
+.hud-card.right { margin-left:auto; }
+.hud-card .label { color:#7d6b56; font-size:10px; letter-spacing:1px; }
+#hp-display { font-size:13px; line-height:1.2; letter-spacing:-1px; }
+#plevel { color:#f5c542; font-weight:900; font-size:14px; text-shadow:0 0 8px rgba(245,197,66,.45); }
+#weapon { color:#ffa14a; font-weight:bold; font-size:11.5px; }
+#timed  { color:#ff5fa2; font-weight:bold; font-size:11.5px; }
+#zinfo  { color:#8fd14f; font-weight:bold; font-size:12px; }
+#zcount { color:#d0c0a8; font-weight:bold; font-size:12px; }
+#elite-count { color:#ff6b6b; font-weight:900; font-size:12px; }
+#time { font-weight:900; color:#ff4d4d; font-size:20px; min-width:52px; text-align:center;
+        text-shadow:0 0 12px rgba(255,77,77,.5); letter-spacing:1px; }
+.xpbar { width:64px; height:8px; background:#241a12; border:1px solid #3a2a1e; border-radius:4px; overflow:hidden; }
+.xpbar i { display:block; height:100%; width:0%; border-radius:3px;
+  background:linear-gradient(90deg,#c9a227,#f5c542); box-shadow:0 0 8px rgba(245,197,66,.55); transition:width .18s linear; }
+
+/* ================= 横幅 ================= */
+#banner {
+  position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  background:rgba(14,7,6,.9); color:#ff6b6b; padding:7px 22px; border-radius:5px;
+  font-size:13px; font-weight:bold; letter-spacing:.5px; pointer-events:none;
+  opacity:0; transition:opacity .3s; border:1px solid #4a1a1a; white-space:nowrap;
+  z-index:6; text-shadow:0 1px 2px #000; box-shadow:0 4px 18px rgba(0,0,0,.7);
+}
+#banner.show { opacity:1; }
+
+/* ================= 遮罩面板 ================= */
+#overlay {
+  position:absolute; inset:0; z-index:10;
+  background: radial-gradient(ellipse at center, rgba(26,6,6,.965) 0%, rgba(6,4,3,.985) 100%);
+  display:flex; align-items:center; justify-content:center; padding:16px;
+  overflow:auto;
+}
+#overlay.hidden { display:none; }
+.panel { width:100%; max-width:820px; text-align:center; position:relative; }
+.panel.hidden { display:none; }
+
+/* 血滴装饰 */
+#overlay::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:120px; pointer-events:none;
+  background:
+    radial-gradient(8px 16px at 12% 0%, #7a0f0f 40%, transparent 42%),
+    radial-gradient(5px 22px at 27% 0%, #5e0b0b 40%, transparent 42%),
+    radial-gradient(10px 12px at 44% 0%, #8b1414 40%, transparent 42%),
+    radial-gradient(6px 26px at 63% 0%, #660d0d 40%, transparent 42%),
+    radial-gradient(9px 15px at 81% 0%, #7a0f0f 40%, transparent 42%),
+    radial-gradient(5px 19px at 93% 0%, #5a0a0a 40%, transparent 42%);
+  opacity:.85; animation: drip 6s ease-in-out infinite;
+}
+@keyframes drip { 0%,100%{ transform:scaleY(1); opacity:.8; } 50%{ transform:scaleY(1.25); opacity:.95; } }
+
+.ov-crest {
+  font-size:44px; margin-bottom:2px;
+  animation: crestFloat 3.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 14px rgba(120,40,40,.6));
+}
+@keyframes crestFloat {
+  0%,100% { transform:translateY(0) rotate(-3deg); }
+  50%     { transform:translateY(-9px) rotate(3deg); }
+}
+#ov-title, #end-title {
+  font-size:38px; font-weight:900; letter-spacing:10px; color:#b53232;
+  text-shadow: 0 2px 5px #000, 0 0 26px rgba(180,50,50,.55), 0 0 70px rgba(110,14,14,.5);
+  margin-bottom:4px;
+}
+#ov-subtitle, #end-sub {
+  font-size:10.5px; color:#7a6552; letter-spacing:6px; margin-bottom:14px;
+}
+#end-title.win { color:#e8b93a; text-shadow:0 2px 5px #000, 0 0 26px rgba(232,185,58,.6), 0 0 70px rgba(150,110,20,.5); }
+
+#ov-text {
+  font-size:12.5px; color:#a99c88; line-height:1.75; text-align:left;
+  background: rgba(16,10,8,.72); border:1px solid #35261c; border-radius:8px;
+  padding:14px 18px; box-shadow: inset 0 2px 14px rgba(0,0,0,.6);
+  margin-bottom:16px;
+}
+.sec { display:flex; gap:9px; align-items:flex-start; margin-bottom:7px; }
+.sec:last-of-type { margin-bottom:0; }
+.ic  { font-size:14px; flex:0 0 auto; line-height:1.5; }
+.sec > div { flex:1; }
+.sec b { color:#d4af37; letter-spacing:.5px; margin-right:4px; }
+.goal {
+  margin-top:11px; padding-top:10px; border-top:1px dashed #3a2a20;
+  text-align:center; font-size:14px; font-weight:900; color:#d9b451; letter-spacing:1px;
+  text-shadow: 0 0 12px rgba(217,180,81,.45);
+}
+.kbd {
+  display:inline-block; background:#241b15; border:1px solid #4b382a; border-bottom-width:2px;
+  border-radius:3px; padding:0 6px; font-size:11px; color:#f2e6cf; margin:0 1px;
+  box-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+.tag { display:inline-block; padding:0 5px; border-radius:3px; font-size:11px; margin-right:3px; }
+.tag.w { background:#3a2412; color:#ffa863; border:1px solid #5c3a1c; }
+.tag.i { background:#2a1520; color:#ff8fb8; border:1px solid #5a2438; }
+.tag.e { background:#3d2a12; color:#ffd166; border:1px solid #6b4a1e; }
+
+.bigbtn {
+  font-family:inherit; font-size:19px; font-weight:900; letter-spacing:5px;
+  padding:13px 52px; color:#fff; cursor:pointer;
+  background: linear-gradient(180deg,#9e1f1f 0%, #6d1212 100%);
+  border:2px solid #be3838; border-radius:7px;
+  text-shadow:0 2px 4px rgba(0,0,0,.85);
+  box-shadow: 0 5px 16px rgba(158,31,31,.5), inset 0 1px 0 rgba(255,190,190,.25);
+  transition: all .25s ease; animation: btnPulse 2.2s ease-in-out infinite;
+}
+.bigbtn:hover { background:linear-gradient(180deg,#bd2828 0%, #831818 100%); transform:translateY(-2px) scale(1.03);
+  box-shadow:0 8px 26px rgba(190,40,40,.7), inset 0 1px 0 rgba(255,200,200,.3); }
+.bigbtn:active { transform:translateY(0) scale(.98); }
+@keyframes btnPulse {
+  0%,100% { box-shadow:0 5px 16px rgba(158,31,31,.5), inset 0 1px 0 rgba(255,190,190,.25); }
+  50%     { box-shadow:0 5px 26px rgba(210,45,45,.75), inset 0 1px 0 rgba(255,200,200,.3); }
+}
+
+/* 结算统计 */
+.stats { display:flex; justify-content:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.stat {
+  min-width:104px; background:rgba(18,12,9,.8); border:1px solid #3a2a1e; border-radius:7px;
+  padding:10px 14px; box-shadow: inset 0 2px 12px rgba(0,0,0,.55);
+}
+.stat .v { font-size:21px; font-weight:900; color:#e9c65c; text-shadow:0 0 10px rgba(233,198,92,.35); }
+.stat .k { font-size:10.5px; color:#87765f; letter-spacing:1px; margin-top:2px; }
+
+.footer-info { margin-top:10px; font-size:10.5px; color:#463b31; letter-spacing:2px; text-align:center; z-index:1; }
+</style>
+</head>
+<body>
+
+<div class="game-header">
+  <div class="game-title">丧尸房间逃生</div>
+  <div class="game-subtitle">ZOMBIE ROOM ESCAPE</div>
+</div>
+
+<div id="wrap">
+  <div id="hud">
+    <div class="hud-card" id="hp-card"><span class="label">血量</span><span id="hp-display"></span></div>
+    <div class="hud-card"><span class="label">等级</span><span id="plevel">1</span></div>
+    <div class="hud-card"><span class="label">经验</span><div class="xpbar"><i id="xpfill"></i></div></div>
+    <div class="hud-card"><span class="label">武器</span><span id="weapon">赤手空拳</span></div>
+    <div class="hud-card"><span class="label">计时武器</span><span id="timed">无</span></div>
+    <div class="hud-card"><span class="label">尸群</span><span id="zcount">0</span></div>
+    <div class="hud-card"><span class="label">精英</span><span id="elite-count">0</span></div>
+    <div class="hud-card"><span class="label">丧尸等级</span><span id="zinfo">Lv1</span></div>
+    <div class="hud-card right"><span class="label">剩余时间</span><span id="time">3:30</span></div>
+  </div>
+
+  <canvas id="cv" width="1000" height="640"></canvas>
+  <div id="banner"></div>
+
+  <div id="overlay">
+    <!-- 开始面板 -->
+    <div id="ov-start" class="panel">
+      <div class="ov-crest">&#129503;</div>
+      <div id="ov-title">丧尸房间逃生</div>
+      <div id="ov-subtitle">ZOMBIE ROOM ESCAPE · SURVIVE 3:30</div>
+      <div id="ov-text">
+        <div class="sec"><span class="ic">&#127918;</span><div><b>操作</b>
+          <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> / <span class="kbd">方向键</span> 移动 ·
+          <span class="kbd">空格</span> / <span class="kbd">鼠标左键</span> 攻击（鼠标瞄准）</div></div>
+        <div class="sec"><span class="ic">&#9876;&#65039;</span><div><b>武器</b>
+          <span class="tag w">木棍 2</span><span class="tag w">电锯 3</span><span class="tag w">冲锋枪 5</span>
+          <span class="tag w">悬浮激光匕首 7</span><span class="tag w">大炮 10·群攻</span><span class="tag w">坦克炮 15·群攻</span>
+          <br><span style="color:#7d6f5c;font-size:11.5px">每升 1 级全武器伤害 +1、攻击范围 +6px、血量上限 +1</span></div></div>
+        <div class="sec"><span class="ic">&#128138;</span><div><b>道具</b>
+          <span class="tag i">医疗包 +1血·25秒刷新</span><span class="tag i">力量药瓶 +2伤害·10秒刷新</span>
+          <span class="tag i">减速药瓶 丧尸减速50%</span><br>
+          <span style="color:#7d6f5c;font-size:11.5px">触碰即触发，无需按键</span></div></div>
+        <div class="sec"><span class="ic">&#129503;</span><div><b>丧尸</b>
+          每 30 秒集体升级（血量与伤害提升）· 当场数量同步增援<br>
+          <span class="tag e">每 30 秒降临 5 只精英丧尸</span>体型更大、血量翻倍、<b style="color:#ff8a5c">可直接摧毁障碍物</b><br>
+          <span style="color:#7d6f5c;font-size:11.5px">击杀精英可获得 2 点经验（普通丧尸 1 点）</span></div></div>
+        <div class="goal">&#127942; 坚持 3 分 30 秒即可逃出生天</div>
+      </div>
+      <button id="btn" class="bigbtn">开 始 逃 生</button>
+    </div>
+
+    <!-- 结算面板 -->
+    <div id="ov-end" class="panel hidden">
+      <div class="ov-crest" id="end-icon">&#128128;</div>
+      <div id="end-title">你被丧尸吃掉了</div>
+      <div id="end-sub">GAME OVER</div>
+      <div class="stats">
+        <div class="stat"><div class="v" id="st-kill">0</div><div class="k">击杀丧尸</div></div>
+        <div class="stat"><div class="v" id="st-elite">0</div><div class="k">精英击杀</div></div>
+        <div class="stat"><div class="v" id="st-lv">1</div><div class="k">最终等级</div></div>
+        <div class="stat"><div class="v" id="st-time">0:00</div><div class="k">存活时长</div></div>
+        <div class="stat"><div class="v" id="st-zlv">1</div><div class="k">丧尸等级</div></div>
+      </div>
+      <button id="btn2" class="bigbtn">再 来 一 局</button>
+    </div>
+  </div>
+</div>
+
+<div class="footer-info">WASD 移动 · 空格/鼠标攻击 · 尸潮来袭 挺住别倒下</div>
+
+<script>
+"use strict";
+
+/* ==================================================================
+   0. 常量 / 工具
+   ================================================================== */
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const bannerEl = document.getElementById('banner');
+const overlayEl = document.getElementById('overlay');
+const ovStartEl = document.getElementById('ov-start');
+const ovEndEl = document.getElementById('ov-end');
+
+const W = cv.width, H = cv.height, WALL = 16;
+const TOTAL_TIME = 210;          // 3 分 30 秒
+const TAU = Math.PI * 2;
+const MAX_ZOMBIES = 62;          // 性能保护上限
+const MAX_ITEMS   = 12;
+const MAX_PLAYER_LEVEL = 30;   // 等级软上限：防止「击杀即补充」导致属性无限膨胀
+const ZOMBIE_LEVEL_CAP = 99;
+const ELITE_WAVE_INTERVAL = 30;  // 每 30 秒 5 只精英
+const ELITE_WAVE_SIZE = 5;
+
+const clamp = (v,a,b) => v < a ? a : (v > b ? b : v);
+const dist  = (x1,y1,x2,y2) => Math.hypot(x2-x1, y2-y1);
+const rand  = (a,b) => a + Math.random() * (b - a);
+const pick  = arr => arr[(Math.random() * arr.length) | 0];
+
+function cir(g,x,y,r){ g.beginPath(); g.arc(x,y,r,0,TAU); g.fill(); }
+function ell(g,x,y,rx,ry,rot){ g.beginPath(); g.ellipse(x,y,rx,ry,rot||0,0,TAU); g.fill(); }
+function lin(g,x1,y1,x2,y2){ g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke(); }
+function rrect(g,x,y,w,h,r){
+  g.beginPath();
+  g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
+  g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath();
+}
+function poly(g, pts){ g.beginPath(); g.moveTo(pts[0],pts[1]); for(let i=2;i<pts.length;i+=2) g.lineTo(pts[i],pts[i+1]); g.closePath(); }
+
+/* 心形路径 */
+function heartPath(g, cx, cy, s){
+  g.beginPath();
+  g.moveTo(cx, cy + s*0.78);
+  g.bezierCurveTo(cx - s*1.35, cy - s*0.34, cx - s*0.52, cy - s*1.18, cx, cy - s*0.44);
+  g.bezierCurveTo(cx + s*0.52, cy - s*1.18, cx + s*1.35, cy - s*0.34, cx, cy + s*0.78);
+  g.closePath();
+}
+/* 画布上的血量标记：<5 逐颗心，>=5 显示 ♥×N */
+function drawHealthTag(g, x, y, hp, scale){
+  const n = Math.max(0, Math.floor(hp));
+  if (n <= 0) return;
+  const s = (scale || 1) * 3.6;
+  if (n < 5) {
+    const gap = 1.6, step = s*2 + gap;
+    let sx = x - (n*step - gap)/2 + s;
+    for (let i=0;i<n;i++){ heartPath(g, sx, y, s); g.fill(); sx += step; }
+  } else {
+    heartPath(g, x - scale*9, y, s); g.fill();
+    g.font = 'bold ' + Math.round(10*scale) + 'px system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('\u2665\u00D7' + n, x - scale*5, y + 4*scale);
+  }
+}
+
+/* ==================================================================
+   1. 全局状态（全部显式声明 —— 严格模式下绝不出现未声明变量）
+   ================================================================== */
+let state = 'menu';
+let player = null;
+let zombies = [], bullets = [], items = [], texts = [], bloods = [], explosions = [], debris = [];
+let OBSTACLES = [];
+let floorTex = null;
+
+let keys = {};
+let mouse = { x: W/2, y: H/2, down: false };
+
+let elapsed, gameTime, zombieLevel, swing, shake, bannerTimer;
+let kills, eliteKills, scoreXpShown;
+
+let itemTimer, healthTimer, strengthTimer, slowTimer, cannonTimer, tankTimer, laserTimer;
+let zombieClusterTimer, eliteWaveIdx, nextUpgradeIdx;
+
+let laserKnifeActive, laserKnifeTimer, laserKnifeDamage, laserKnifeRange, laserAngle;
+
+/* ==================================================================
+   2. 武器 / 丧尸数值表
+   ================================================================== */
+const WEAPONS = {
+  hand:   { name:'\uD83D\uDC4A 赤手空拳', type:'melee', base:1,  range:55, cd:0.32 },
+  stick:  { name:'\uD83E\uDEB5 木棍',     type:'melee', base:2,  range:70, cd:0.40 },
+  saw:    { name:'\uD83D\uDD27 电锯',     type:'melee', base:3,  range:85, cd:0.26 },
+  smg:    { name:'\uD83D\uDD2B 冲锋枪',   type:'gun',   base:5,  cd:0.09, bspd:13 },
+  cannon: { name:'\uD83D\uDCA5 大炮',     type:'gun',   base:10, cd:0.55, bspd:10, splash:110, targets:3, duration:10 },
+  tank:   { name:'\uD83D\uDE9C 坦克炮',   type:'gun',   base:15, cd:0.80, bspd:9,  splash:150, targets:3, duration:10 },
+};
+const PERM_ORDER = ['hand','stick','saw','smg'];
+
+/* 丧尸属性：支持 1~99 级，普通 / 精英两种形态 */
+function zombieStats(level, elite){
+  const lv = clamp(level, 1, ZOMBIE_LEVEL_CAP);
+  const visual = Math.min(lv, 12);                 // 体型视觉上限，避免撑爆画面
+  let r    = 11.5 + visual * 1.55;
+  let hp   = 2 + lv * 1.6;
+  let dmg  = 1 + lv;
+  let spd  = 1.05 + Math.min(lv, 10) * 0.155;
+  let smash = 0;
+  if (elite) {
+    r     *= 1.7;
+    hp     = hp * 2.2 + 4;
+    dmg    = dmg * 1.4 + 1;
+    spd   *= 0.84;
+    smash  = 11 + lv * 3;                          // 摧毁障碍物速度 (hp/秒)
+  }
+  return {
+    r: Math.min(r, 68),
+    hp: Math.round(hp),
+    dmg: Math.round(dmg),
+    speed: spd,
+    smashPower: smash,
+    xp: elite ? 2 : 1,
+  };
+}
+
+/* ==================================================================
+   3. 地图：地板纹理 + 障碍物
+   ================================================================== */
+function buildFloorTexture(){
+  floorTex = document.createElement('canvas');
+  floorTex.width = W; floorTex.height = H;
+  const g = floorTex.getContext('2d');
+  const ts = 40;
+  g.fillStyle = '#2a2721'; g.fillRect(0,0,W,H);
+  for (let y=WALL; y<H-WALL; y+=ts){
+    for (let x=WALL; x<W-WALL; x+=ts){
+      const v = Math.random();
+      g.fillStyle = 'rgb(' + (43+v*11|0) + ',' + (40+v*10|0) + ',' + (34+v*9|0) + ')';
+      g.fillRect(x, y, ts-1, ts-1);
+    }
+  }
+  g.strokeStyle = 'rgba(18,16,12,.75)'; g.lineWidth = 1;
+  for (let x=WALL; x<=W-WALL; x+=ts){ lin(g, x, WALL, x, H-WALL); }
+  for (let y=WALL; y<=H-WALL; y+=ts){ lin(g, WALL, y, W-WALL, y); }
+
+  g.strokeStyle = 'rgba(14,11,9,.5)'; g.lineWidth = 1.4;
+  for (let i=0;i<26;i++){
+    let x = rand(WALL+10, W-WALL-10), y = rand(WALL+10, H-WALL-10);
+    g.beginPath(); g.moveTo(x,y);
+    for (let k=0;k<5;k++){ x += rand(-28,28); y += rand(-28,28); g.lineTo(x,y); }
+    g.stroke();
+  }
+  for (let i=0;i<20;i++){
+    const x = rand(WALL+30, W-WALL-30), y = rand(WALL+30, H-WALL-30);
+    g.globalAlpha = rand(0.05, 0.15);
+    g.fillStyle = '#4d0e0e';
+    g.beginPath(); g.ellipse(x, y, rand(14,46), rand(10,36), rand(0,TAU), 0, TAU); g.fill();
+    for (let k=0;k<7;k++){
+      g.beginPath();
+      g.ellipse(x+rand(-44,44), y+rand(-34,34), rand(2,7), rand(2,6), 0, 0, TAU);
+      g.fill();
+    }
+  }
+  g.globalAlpha = 1;
+  for (let i=0;i<1500;i++){
+    g.fillStyle = Math.random() < 0.55 ? 'rgba(0,0,0,.16)' : 'rgba(255,240,205,.03)';
+    g.fillRect(rand(WALL,W-WALL), rand(WALL,H-WALL), rand(1,3), rand(1,3));
+  }
+}
+
+function generateObstacles(){
+  OBSTACLES = [];
+  const free = (x,y,r) => dist(x,y,W/2,H/2) > r;
+  const add = (o) => {
+    o.maxHp = Math.max(8, Math.round(o.type === 'rect' ? (o.w*o.h)/230 : o.r*1.7));
+    o.hp = o.maxHp; o.hitFlash = 0; o.seed = Math.random()*TAU;
+    const cx = o.type==='rect' ? o.x+o.w/2 : o.x;
+    const cy = o.type==='rect' ? o.y+o.h/2 : o.y;
+    if (free(cx,cy,165)) OBSTACLES.push(o);
+  };
+  const box    = (x,y,w,h,skin) => add({ type:'rect', x,y,w,h, skin: skin||'crate' });
+  const barrel = (x,y,r)        => add({ type:'circle', x,y, r: r||20, skin:'barrel' });
+  const table  = (x,y)          => add({ type:'rect', x,y, w:120, h:50, skin:'table' });
+
+  /* 四角仓库区 */
+  box(70,70,100,80); box(180,70,80,80); box(70,165,100,60);
+  box(W-170,70,100,80); box(W-260,70,80,80); box(W-170,165,100,60);
+  box(70,H-150,100,80); box(180,H-150,80,80); box(70,H-225,100,60);
+  box(W-170,H-150,100,80); box(W-260,H-150,80,80); box(W-170,H-225,100,60);
+
+  /* 中央十字掩体 */
+  box(W/2-130, H/2-45, 88,88); box(W/2+42, H/2-45, 88,88);
+  box(W/2-44,  H/2-158, 88,88); box(W/2-44, H/2+70, 88,88);
+  barrel(W/2, H/2, 24);
+
+  /* 走廊墙（上下） */
+  for (let i=0;i<5;i++) box(340+i*74, 138, 64,54);
+  for (let i=0;i<5;i++) box(W-340-i*74, H-192, 64,54);
+  /* 走廊墙（左右） */
+  for (let i=0;i<3;i++) box(158, 300+i*64, 54,54);
+  for (let i=0;i<3;i++) box(W-212, H-300-i*64-54, 54,54);
+
+  /* 散点掩体 */
+  for (let i=0;i<9;i++) table(rand(275, W-400), rand(255, H-320));
+  for (let i=0;i<11;i++) barrel(rand(255, W-275), rand(255, H-275), rand(16,26));
+  for (let i=0;i<7;i++)  box(rand(295, W-380), rand(275, H-360), rand(50,88), rand(45,70), 'table');
+  for (let i=0;i<5;i++){ barrel(rand(400,W-420), rand(150,250), 20); barrel(rand(400,W-420), rand(H-260,H-160), 20); }
+}
+
+/* 点到障碍物的距离 */
+function obsDist(o, x, y){
+  if (o.type === 'rect'){
+    const nx = clamp(x, o.x, o.x+o.w), ny = clamp(y, o.y, o.y+o.h);
+    return dist(x,y,nx,ny);
+  }
+  return dist(x,y,o.x,o.y) - o.r;
+}
+function pointInObstacle(x, y, r){
+  for (const o of OBSTACLES) if (obsDist(o,x,y) < r) return true;
+  return false;
+}
+function freePoint(r, awayFrom){
+  for (let i=0;i<220;i++){
+    const x = rand(WALL+30, W-WALL-30), y = rand(WALL+30, H-WALL-30);
+    if (x < WALL+r || x > W-WALL-r || y < WALL+r || y > H-WALL-r) continue;
+    if (awayFrom && dist(x,y,awayFrom.x,awayFrom.y) < awayFrom.d) continue;
+    if (pointInObstacle(x,y,r+3)) continue;
+    return {x,y};
+  }
+  return { x: clamp(rand(WALL+40,W-WALL-40), WALL+r, W-WALL-r),
+           y: clamp(rand(WALL+40,H-WALL-40), WALL+r, H-WALL-r) };
+}
+function collideObstacles(e){
+  for (const o of OBSTACLES){
+    const d = obsDist(o, e.x, e.y);
+    if (d < e.r){
+      let nx, ny;
+      if (o.type==='rect'){ nx = clamp(e.x,o.x,o.x+o.w); ny = clamp(e.y,o.y,o.y+o.h); }
+      else { nx = o.x; ny = o.y; }
+      const ang = Math.atan2(e.y-ny, e.x-nx) || 0;
+      const rr  = (o.type==='rect' ? e.r : e.r + o.r);
+      e.x = nx + Math.cos(ang)*rr;
+      e.y = ny + Math.sin(ang)*rr;
+    }
+  }
+}
+
+/* ==================================================================
+   4. 生成：丧尸（普通 / 精英）
+   ================================================================== */
+function makeZombie(level, elite, x, y){
+  const s = zombieStats(level, elite);
+  return {
+    x, y,
+    level, elite: !!elite,
+    r: s.r, hp: s.hp, maxHp: s.hp,
+    dmg: s.dmg, speed: s.speed,
+    smashPower: s.smashPower, xp: s.xp,
+    flash:0, cd:0, wob: Math.random()*TAU, angle:0, legPhase: Math.random()*TAU,
+    slowT:0, spawnT:0.8, clusterSize:0,
+    wanderT: rand(0,3), wanderA:0, wanderSeed: rand(0,TAU),
+    stuckT:0, lastX:x, lastY:y,
+    smashing:false, aura: Math.random()*TAU,
+  };
+}
+
+function spawnZombie(elite){
+  if (zombies.length >= MAX_ZOMBIES) return null;
+  const p = freePoint((elite ? zombieStats(zombieLevel,true).r : zombieStats(zombieLevel,false).r) + 4,
+                      { x: player.x, y: player.y, d: elite ? 320 : 260 });
+  const z = makeZombie(zombieLevel, !!elite, p.x, p.y);
+  zombies.push(z);
+  return z;
+}
+
+function spawnEliteWave(){
+  let n = 0;
+  for (let i=0;i<ELITE_WAVE_SIZE;i++) if (spawnZombie(true)) n++;
+  if (n > 0){
+    showBanner('\u2620\uFE0F 精英丧尸群降临！' + n + ' 只 · Lv.' + zombieLevel + ' · 可摧毁障碍物');
+    shake = Math.max(shake, 0.55);
+  }
+}
+
+/* 丧尸集体升级：保留血量百分比，精英保持精英形态 */
+function upgradeZombies(){
+  for (const z of zombies){
+    const s = zombieStats(zombieLevel, z.elite);
+    const ratio = z.maxHp > 0 ? z.hp / z.maxHp : 1;
+    z.level = zombieLevel;
+    z.r = s.r; z.maxHp = s.hp;
+    z.hp = Math.max(1, Math.round(s.hp * ratio));
+    z.dmg = s.dmg; z.speed = s.speed;
+    z.smashPower = s.smashPower; z.xp = s.xp;
+  }
+}
+
+function spawnItem(type){
+  if (items.length >= MAX_ITEMS) return;
+  const p = freePoint(22, { x: player.x, y: player.y, d: 130 });
+  items.push({ x:p.x, y:p.y, type, bob: Math.random()*TAU });
+}
+
+/* ==================================================================
+   5. 初始化
+   ================================================================== */
+function initGame(){
+  buildFloorTexture();
+  generateObstacles();
+
+  player = {
+    x: W/2, y: H/2, r: 14,
+    hp: 6, maxHp: 6,               // 初始 6 血，升级时 maxHp+1
+    level: 1, xp: 0, speed: 2.6,
+    weapon: 'hand', timedWeapon: null,
+    dmgBonus: 0, bonusRange: 0,
+    atkCd: 0, inv: 0, angle: 0, walk: 0, aimX: W/2+50, aimY: H/2,
+  };
+
+  zombies = []; bullets = []; items = []; texts = []; bloods = []; explosions = []; debris = [];
+  keys = {}; mouse.down = false;
+
+  elapsed = 0; gameTime = TOTAL_TIME; zombieLevel = 1;
+  swing = null; shake = 0; bannerTimer = 0;
+  kills = 0; eliteKills = 0;
+
+  itemTimer = 2; healthTimer = 25; strengthTimer = 10; slowTimer = 16;
+  cannonTimer = 55; tankTimer = 115; laserTimer = 0;
+  zombieClusterTimer = 0.4; eliteWaveIdx = 0; nextUpgradeIdx = 0;
+
+  laserKnifeActive = false; laserKnifeTimer = 0;
+  laserKnifeDamage = 7; laserKnifeRange = 2; laserAngle = 0;
+
+  for (let i=0;i<3;i++) spawnZombie(false);
+  spawnItem('stick'); spawnItem('saw');
+}
+
+/* ==================================================================
+   6. 更新主逻辑
+   ================================================================== */
+function update(dt){
+  elapsed += dt;
+  gameTime = TOTAL_TIME - elapsed;
+  if (gameTime <= 0){ endGame(true); return; }
+  if (bannerTimer > 0){ bannerTimer -= dt; if (bannerTimer <= 0) bannerEl.classList.remove('show'); }
+
+  /* --- 每 30 秒：丧尸集体升级 + 增援 + 精英潮 --- */
+  const dueIdx = Math.floor(elapsed / ELITE_WAVE_INTERVAL);
+  while (nextUpgradeIdx < dueIdx && zombieLevel < ZOMBIE_LEVEL_CAP){
+    nextUpgradeIdx++;
+    zombieLevel++;
+    upgradeZombies();
+    const addN = Math.min(zombieLevel, 4);
+    for (let i=0;i<addN;i++) spawnZombie(false);
+    showBanner('\uD83E\uDDF7 丧尸升级至 Lv.' + zombieLevel + '！血量/伤害提升 · 增援 ' + addN + ' 只');
+    shake = Math.max(shake, 0.4);
+  }
+  while (eliteWaveIdx < dueIdx){ eliteWaveIdx++; spawnEliteWave(); }
+
+  /* --- 道具刷新 --- */
+  itemTimer -= dt;
+  if (itemTimer <= 0){
+    itemTimer = 4;
+    if (items.filter(i => !['health','cannon','tank','laserKnife','strength','slowPotion'].includes(i.type)).length < 5){
+      spawnItem(pick(['stick','saw','smg']));
+    }
+  }
+  healthTimer -= dt;
+  if (healthTimer <= 0){ healthTimer = 25; if (!items.some(i=>i.type==='health')) spawnItem('health'); }
+  strengthTimer -= dt;
+  if (strengthTimer <= 0){ strengthTimer = 10; if (!items.some(i=>i.type==='strength')) spawnItem('strength'); }
+  slowTimer -= dt;
+  if (slowTimer <= 0){ slowTimer = 16; if (!items.some(i=>i.type==='slowPotion')) spawnItem('slowPotion'); }
+  cannonTimer -= dt;
+  if (cannonTimer <= 0){ cannonTimer = 40; if (!items.some(i=>i.type==='cannon')) spawnItem('cannon'); }
+  tankTimer -= dt;
+  if (tankTimer <= 0){ tankTimer = 60; if (!items.some(i=>i.type==='tank')) spawnItem('tank'); }
+  /* 悬浮激光匕首：1 分 30 秒（elapsed>=90）开始掉落，之后每 20 秒一件 */
+  if (elapsed >= 90){
+    laserTimer -= dt;
+    if (laserTimer <= 0){
+      laserTimer = 20;
+      if (!items.some(i=>i.type==='laserKnife') && !laserKnifeActive) spawnItem('laserKnife');
+    }
+  }
+
+  /* --- 玩家移动 --- */
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['arrowup'])    dy -= 1;
+  if (keys['s'] || keys['arrowdown'])  dy += 1;
+  if (keys['a'] || keys['arrowleft'])  dx -= 1;
+  if (keys['d'] || keys['arrowright']) dx += 1;
+  if (dx || dy){
+    const len = Math.hypot(dx,dy);
+    player.x += (dx/len) * player.speed * dt * 60;
+    player.y += (dy/len) * player.speed * dt * 60;
+    player.walk += dt * 11;
+    collideObstacles(player);
+  } else {
+    player.walk += dt * 1.6;
+  }
+  player.x = clamp(player.x, WALL+player.r, W-WALL-player.r);
+  player.y = clamp(player.y, WALL+player.r, H-WALL-player.r);
+
+  /* --- 瞄准 --- */
+  const rect = cv.getBoundingClientRect();
+  const mx = mouse.x - rect.left, my = mouse.y - rect.top;
+  player.aimX = mx; player.aimY = my;
+  player.angle = Math.atan2(my - player.y, mx - player.x);
+
+  /* --- 计时武器 --- */
+  if (player.timedWeapon){
+    player.timedWeapon.timer -= dt;
+    if (player.timedWeapon.timer <= 0){
+      showBanner(WEAPONS[player.timedWeapon.type].name + ' 能量耗尽！恢复为 ' + WEAPONS[player.weapon].name);
+      player.timedWeapon = null;
+    }
+  }
+
+  /* --- 攻击 --- */
+  player.atkCd -= dt;
+  player.inv = Math.max(0, player.inv - dt);
+  if ((mouse.down || keys[' '] || keys['j']) && player.atkCd <= 0) doAttack();
+
+  /* --- 丧尸聚集度 --- */
+  zombieClusterTimer -= dt;
+  if (zombieClusterTimer <= 0){
+    zombieClusterTimer = 0.4;
+    for (const z of zombies){
+      z.clusterSize = 0;
+      if (z.spawnT > 0) continue;
+      for (const o of zombies){
+        if (o === z || o.spawnT > 0) continue;
+        if (dist(z.x,z.y,o.x,o.y) < 70) z.clusterSize++;
+      }
+    }
+  }
+
+  /* --- 丧尸 AI --- */
+  for (const z of zombies){
+    if (z.spawnT > 0){ z.spawnT -= dt; continue; }
+    z.flash = Math.max(0, z.flash - dt);
+    z.cd   -= dt;
+    z.slowT = Math.max(0, z.slowT - dt);
+    z.aura += dt * 3;
+
+    /* 随机漫游：防止群体卡在同一路径 */
+    z.wanderT -= dt;
+    if (z.wanderT <= 0){
+      z.wanderA = (Math.random() - 0.5) * 1.35;
+      z.wanderT = rand(1.2, 3.4);
+    }
+    const dp = dist(z.x, z.y, player.x, player.y);
+    const wanderAmt = dp > 65 ? z.wanderA : z.wanderA * 0.28;
+    const ang = Math.atan2(player.y - z.y, player.x - z.x) + wanderAmt;
+
+    let spd = z.speed * (z.slowT > 0 ? 0.5 : 1) * (z.smashing ? 0.42 : 1);
+    z.angle = ang; z.wob += dt * 7; z.legPhase += dt * 6.5;
+    const step = spd * dt * 60 * 0.9;
+    z.x += Math.cos(ang) * step + Math.cos(ang + Math.PI/2) * Math.sin(z.wob) * 0.3;
+    z.y += Math.sin(ang) * step + Math.sin(ang + Math.PI/2) * Math.sin(z.wob) * 0.3;
+
+    /* 精英：直接摧毁障碍物；普通：被阻挡（尸潮可推动） */
+    if (z.elite && z.smashPower > 0){
+      z.smashing = eliteSmash(z, dt);
+    } else {
+      z.smashing = false;
+      if ((z.clusterSize || 0) >= 4) zombieHordePush(z, ang, dt);
+      else collideObstacles(z);
+    }
+    z.x = clamp(z.x, WALL+z.r, W-WALL-z.r);
+    z.y = clamp(z.y, WALL+z.r, H-WALL-z.r);
+
+    /* 卡死检测 */
+    z.stuckT += dt;
+    if (z.stuckT >= 0.8){
+      if (dist(z.x,z.y,z.lastX,z.lastY) < 8 && dp > 55){
+        const escA = ang + (Math.random() > 0.5 ? 1 : -1) * (Math.PI/2 + rand(-0.3,0.3));
+        z.x = clamp(z.x + Math.cos(escA)*26, WALL+z.r, W-WALL-z.r);
+        z.y = clamp(z.y + Math.sin(escA)*26, WALL+z.r, H-WALL-z.r);
+      }
+      z.lastX = z.x; z.lastY = z.y; z.stuckT = 0;
+    }
+
+    /* 接触伤害（体型越大范围越大） */
+    if (dp < z.r + player.r + 2 && z.cd <= 0){
+      hurtPlayer(z.dmg);
+      z.cd = 1.0;
+      if (state !== 'play') return;
+    }
+  }
+
+  /* --- 分离力 --- */
+  sepTimer -= dt;
+  if (sepTimer <= 0){
+    sepTimer = 0;
+    for (let i=0;i<zombies.length;i++){
+      const a = zombies[i]; if (a.spawnT > 0) continue;
+      for (let j=i+1;j<zombies.length;j++){
+        const b = zombies[j]; if (b.spawnT > 0) continue;
+        const d = dist(a.x,a.y,b.x,b.y);
+        const need = a.r + b.r;
+        if (d < need && d > 0.01){
+          const push = (need - d) * 0.5;
+          const ux = (a.x-b.x)/d, uy = (a.y-b.y)/d;
+          a.x += ux*push; a.y += uy*push;
+          b.x -= ux*push; b.y -= uy*push;
+        }
+      }
+    }
+  }
+
+  /* --- 悬浮激光匕首 --- */
+  updateLaserKnife(dt);
+
+  /* --- 拾取道具（触碰即触发） --- */
+  pickupItems(dt);
+
+  /* --- 子弹 --- */
+  updateBullets(dt);
+
+  /* --- 近战结算 --- */
+  if (swing){
+    swing.t -= dt;
+    if (swing.t <= 0){
+      const w = currentWeapon();
+      const dmgVal = meleeDamage();
+      let count = 0;
+      for (const z of zombies){
+        if (z.spawnT > 0 || count >= (w.targets || 1)) continue;
+        if (dist(player.x, player.y, z.x, z.y) < w.range + z.r + player.bonusRange){
+          const a = Math.atan2(z.y - player.y, z.x - player.x);
+          if (Math.abs(angDiff(a, player.angle)) < 1.05){
+            damageZombie(z, dmgVal, true);
+            count++;
+          }
+        }
+      }
+      swing = null;
+    }
+  }
+
+  /* --- 清理死亡丧尸 & 升级 --- */
+  reapZombies();
+
+  /* --- 特效 --- */
+  for (let i=texts.length-1;i>=0;i--){ const t=texts[i]; t.t-=dt; t.y-=dt*30; if(t.t<=0) texts.splice(i,1); }
+  for (let i=bloods.length-1;i>=0;i--){
+    const b=bloods[i]; b.t-=dt; b.x+=b.vx*dt*60; b.y+=b.vy*dt*60; b.vx*=0.93; b.vy*=0.93;
+    if(b.t<=0) bloods.splice(i,1);
+  }
+  for (let i=debris.length-1;i>=0;i--){
+    const d=debris[i]; d.t-=dt; d.x+=d.vx*dt*60; d.y+=d.vy*dt*60; d.vx*=0.95; d.vy*=0.95; d.rot+=d.rs*dt;
+    if(d.t<=0) debris.splice(i,1);
+  }
+  for (let i=explosions.length-1;i>=0;i--){ explosions[i].t-=dt; if(explosions[i].t<=0) explosions.splice(i,1); }
+  for (const o of OBSTACLES) if (o.hitFlash > 0) o.hitFlash = Math.max(0, o.hitFlash - dt);
+  shake = Math.max(0, shake - dt*2);
+}
+let sepTimer = 0;
+
+/* ---------- 子逻辑 ---------- */
+function currentWeapon(){ return player.timedWeapon ? WEAPONS[player.timedWeapon.type] : WEAPONS[player.weapon]; }
+function currentWeaponId(){ return player.timedWeapon ? player.timedWeapon.type : player.weapon; }
+function meleeDamage(){ return currentWeapon().base + (player.level-1) + player.dmgBonus; }
+
+function hurtPlayer(dmg){
+  if (player.inv > 0) return;
+  player.hp -= dmg;
+  player.inv = 0.6;
+  shake = Math.max(shake, 0.35);
+  addText(player.x, player.y-30, '-' + dmg, '#ff5050');
+  spawnBlood(player.x, player.y, 6);
+  if (player.hp <= 0) endGame(false);
+}
+
+function damageZombie(z, dmg, showNum){
+  z.hp -= dmg;
+  z.flash = 0.15;
+  if (showNum) addText(z.x, z.y - z.r - 6, '-' + dmg, '#ffd45e');
+  spawnBlood(z.x, z.y, 4);
+}
+
+function eliteSmash(z, dt){
+  let touching = false;
+  for (let i=OBSTACLES.length-1;i>=0;i--){
+    const o = OBSTACLES[i];
+    if (obsDist(o, z.x, z.y) < z.r){
+      touching = true;
+      o.hp -= z.smashPower * dt;
+      o.hitFlash = 0.18;
+      if (o.hp <= 0){
+        spawnDebris(o);
+        OBSTACLES.splice(i,1);
+        shake = Math.max(shake, 0.45);
+      }
+    }
+  }
+  return touching;
+}
+
+/* 尸潮推动障碍物，被推动的障碍物撞到主角会造成 1 点伤害 */
+function zombieHordePush(z, ang, dt){
+  const step = dt*60*0.30;
+  for (const o of OBSTACLES){
+    if (obsDist(o, z.x, z.y) >= z.r) continue;
+    if (o.type === 'rect'){
+      o.x = clamp(o.x + Math.cos(ang)*step, WALL, W-WALL-o.w);
+      o.y = clamp(o.y + Math.sin(ang)*step, WALL, H-WALL-o.h);
+    } else {
+      o.x = clamp(o.x + Math.cos(ang)*step, WALL+o.r, W-WALL-o.r);
+      o.y = clamp(o.y + Math.sin(ang)*step, WALL+o.r, H-WALL-o.r);
+    }
+    if (obsDist(o, player.x, player.y) < player.r + 1){
+      hurtPlayer(1);
+    }
+  }
+}
+
+function updateLaserKnife(dt){
+  if (!laserKnifeActive) return;
+  laserKnifeTimer -= dt;
+  if (laserKnifeTimer <= 0){
+    laserKnifeActive = false;
+    showBanner('\uD83D\uDD2A 激光匕首能量耗尽！');
+    return;
+  }
+  laserAngle += dt * 3.1;
+  const radius = 50 + laserKnifeRange * 10;
+  for (let i=0;i<3;i++){
+    const a = laserAngle + i*TAU/3;
+    const kx = player.x + Math.cos(a)*radius, ky = player.y + Math.sin(a)*radius;
+    for (const z of zombies){
+      if (z.spawnT > 0) continue;
+      if (dist(kx,ky,z.x,z.y) < z.r + 15){
+        z.hp -= laserKnifeDamage * dt * 3;
+        z.flash = 0.12;
+      }
+    }
+  }
+}
+
+function pickupItems(dt){
+  for (let i=items.length-1;i>=0;i--){
+    const it = items[i];
+    it.bob += dt * 3;
+    if (dist(it.x, it.y, player.x, player.y) >= player.r + 20) continue;
+    switch (it.type){
+      case 'health':
+        if (player.hp < player.maxHp){
+          player.hp = Math.min(player.maxHp, player.hp + 1);
+          addText(player.x, player.y-32, '+1 \u2665', '#3ee07a');
+          items.splice(i,1);
+        }
+        break;
+      case 'strength':
+        player.dmgBonus += 2;
+        addText(player.x, player.y-32, '+2 \u4F24\u5BB3', '#ff6fb0');
+        showBanner('\u26A1 \u529B\u91CF\u836F\u74F6\uFF01\u6C38\u4E45 +2 \u70B9\u4F24\u5BB3');
+        items.splice(i,1);
+        break;
+      case 'slowPotion':
+        for (const z of zombies) z.slowT = Math.max(z.slowT, 12);
+        showBanner('\u2744\uFE0F \u51CF\u901F\u836F\u74F6\uFF01\u5168\u573A\u4E27\u5C38\u51CF\u901F 50% \u00B7 12 \u79D2');
+        items.splice(i,1);
+        break;
+      case 'laserKnife':
+        if (!laserKnifeActive){ activateLaserKnife(); items.splice(i,1); }
+        break;
+      case 'cannon':
+      case 'tank':
+        player.timedWeapon = { type: it.type, timer: WEAPONS[it.type].duration };
+        showBanner(WEAPONS[it.type].name + '\u6FC0\u6D3B\uFF01\u4F24\u5BB3' + WEAPONS[it.type].base + ' \u00B7 \u7FA4\u653B3\u53EA \u00B7 10\u79D2');
+        items.splice(i,1);
+        break;
+      default: {
+        const idx = PERM_ORDER.indexOf(it.type);
+        if (idx >= 0){
+          showBanner(WEAPONS[it.type].name + '\u5DF2\u88C5\u5907\uFF01');
+          player.weapon = it.type;
+          items.splice(i,1);
+        }
+        break;
+      }
+    }
+  }
+}
+
+function updateBullets(dt){
+  for (let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
+    if (b.x<WALL || b.x>W-WALL || b.y<WALL || b.y>H-WALL || b.life<=0 || pointInObstacle(b.x,b.y,3)){
+      if (b.explosive) doExplosion(b.x, b.y, b);
+      bullets.splice(i,1); continue;
+    }
+    let target = null, nd = Infinity;
+    for (const z of zombies){
+      if (z.spawnT > 0) continue;
+      const d = dist(b.x,b.y,z.x,z.y);
+      if (d < z.r + 4 && d < nd){ target = z; nd = d; }
+    }
+    if (target){
+      if (b.explosive) doExplosion(b.x, b.y, b);
+      else {
+        damageZombie(target, b.dmg, true);
+        spawnBlood(b.x, b.y, 4);
+      }
+      bullets.splice(i,1);
+    }
+  }
+}
+
+function doExplosion(x, y, b){
+  const inRange = zombies.filter(z => z.spawnT <= 0 && dist(x,y,z.x,z.y) < b.splash);
+  inRange.sort((a,c) => dist(x,y,a.x,a.y) - dist(x,y,c.x,c.y));
+  const hits = inRange.slice(0, b.targets);
+  for (const z of hits){
+    damageZombie(z, b.dmg, true);
+    spawnBlood(z.x, z.y, 8);
+  }
+  explosions.push({ x, y, t:0.42, max:0.42, r:b.splash });
+  shake = Math.max(shake, 0.5);
+}
+
+function reapZombies(){
+  let xpGain = 0;
+  for (let i=zombies.length-1;i>=0;i--){
+    const z = zombies[i];
+    if (z.hp > 0) continue;
+    spawnBlood(z.x, z.y, 14);
+    zombies.splice(i,1);
+    kills++;
+    if (z.elite) eliteKills++;
+    xpGain += z.xp;
+    /* 击杀后立即补充（精英死亡补普通，避免滚雪球） */
+    spawnZombie(false);
+  }
+  while (xpGain > 0){
+    xpGain--; player.xp++;
+    if (player.xp >= 3){
+      player.xp = 0;
+      if (player.level < MAX_PLAYER_LEVEL){
+        player.level++;
+        player.speed = Math.min(3.9, player.speed + 0.12);
+        player.bonusRange += 6;
+        player.maxHp += 1;          // 主角血量上限 +1
+        player.hp = Math.min(player.maxHp, player.hp + 1);
+        if (laserKnifeActive){ laserKnifeDamage += 2; laserKnifeRange += 1; }
+      }
+      showBanner('\u2B06 \u5347\u7EA7\uFF01Lv.' + player.level + ' \u00B7 \u4F24\u5BB3+1 \u00B7 \u8303\u56F4+6 \u00B7 \u8840\u91CF\u4E0A\u9650+1 \u00B7 \u79FB\u901F\u63D0\u5347');
+    }
+  }
+}
+
+/* ---------- 行为 / 特效 ---------- */
+function doAttack(){
+  const wid = currentWeaponId(), w = WEAPONS[wid];
+  const dmg = w.base + (player.level-1) + player.dmgBonus;
+  player.atkCd = w.cd;
+  if (w.type === 'melee'){
+    swing = { t:0.12, dir: player.angle };
+  } else {
+    bullets.push({
+      x: player.x + Math.cos(player.angle)*22,
+      y: player.y + Math.sin(player.angle)*22,
+      vx: Math.cos(player.angle)*w.bspd*60,
+      vy: Math.sin(player.angle)*w.bspd*60,
+      dmg, life:1.0,
+      explosive: wid==='cannon' || wid==='tank',
+      splash: w.splash||0, targets: w.targets||1, weapon: wid,
+    });
+    if (wid === 'smg' || wid === 'cannon' || wid === 'tank') shake = Math.max(shake, 0.12);
+  }
+}
+function activateLaserKnife(){
+  laserKnifeActive = true; laserKnifeTimer = 10;
+  laserKnifeDamage = 7 + (player.level-1)*2;
+  laserKnifeRange  = 2 + (player.level-1);
+  showBanner('\uD83D\uDD2A \u60AC\u6D6E\u6FC0\u5149\u5315\u9996\u6FC0\u6D3B\uFF01360\u00B0\u73AF\u7ED5\u9632\u5FA1 \u00B7 10\u79D2');
+}
+function spawnBlood(x,y,n){
+  for (let i=0;i<n;i++){
+    const a = Math.random()*TAU, sp = rand(0.6,3);
+    bloods.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+                  t: rand(0.4,0.85), r: rand(1.6,4.2) });
+  }
+}
+function spawnDebris(o){
+  const cx = o.type==='rect' ? o.x+o.w/2 : o.x;
+  const cy = o.type==='rect' ? o.y+o.h/2 : o.y;
+  const n = o.type==='rect' ? 12 : 9;
+  for (let i=0;i<n;i++){
+    const a = Math.random()*TAU, sp = rand(1,4.5);
+    debris.push({ x: cx+rand(-14,14), y: cy+rand(-14,14),
+                  vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+                  t: rand(0.5,1.0), s: rand(2,5.5), rot: Math.random()*TAU, rs: rand(-8,8),
+                  c: Math.random()<0.5 ? '#7a5c30' : '#5d451f' });
+  }
+}
+function addText(x,y,str,color){ if (texts.length < 60) texts.push({ x, y, str, color, t:0.9 }); }
+function angDiff(a,b){ let d=a-b; while(d>Math.PI)d-=TAU; while(d<-Math.PI)d+=TAU; return d; }
+function showBanner(msg){
+  bannerEl.textContent = msg;
+  bannerEl.classList.add('show');
+  bannerTimer = 2.6;
+}
+
+/* ==================================================================
+   7. 绘制
+   ================================================================== */
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random()-0.5)*shake*15, (Math.random()-0.5)*shake*15);
+
+  /* 地板 */
+  if (floorTex) ctx.drawImage(floorTex, 0, 0);
+
+  /* 障碍物 */
+  drawObstacles();
+
+  /* 道具 */
+  drawItems();
+
+  /* 木屑 */
+  for (const d of debris){
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.rot);
+    ctx.globalAlpha = Math.min(1, d.t);
+    ctx.fillStyle = d.c; ctx.fillRect(-d.s/2, -d.s/2, d.s, d.s*0.75);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  /* 血迹 */
+  for (const b of bloods){
+    ctx.globalAlpha = Math.min(1, b.t*1.4) * 0.75;
+    ctx.fillStyle = '#6e0f10';
+    cir(ctx, b.x, b.y, b.r);
+  }
+  ctx.globalAlpha = 1;
+
+  /* 近战挥击弧 */
+  if (swing){
+    const w = currentWeapon();
+    ctx.globalAlpha = (swing.t/0.12)*0.55;
+    ctx.strokeStyle = '#fdf3e0'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, w.range*0.82 + player.bonusRange*0.5, player.angle-1.05, player.angle+1.05);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  /* 子弹 */
+  for (const b of bullets){
+    if (b.explosive){
+      ctx.fillStyle = b.weapon === 'tank' ? '#f6c945' : '#f08c2a';
+      cir(ctx, b.x, b.y, 6);
+      ctx.strokeStyle = 'rgba(255,255,255,.65)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(b.x,b.y,8.5,0,TAU); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ffe27a'; cir(ctx, b.x, b.y, 3.2);
+      ctx.fillStyle = 'rgba(255,180,60,.35)'; cir(ctx, b.x - Math.cos(Math.atan2(b.vy,b.vx))*8, b.y - Math.sin(Math.atan2(b.vy,b.vx))*8, 1.8);
+    }
+  }
+
+  /* 爆炸 */
+  for (const e of explosions){
+    const p = e.t/e.max;
+    ctx.globalAlpha = p*0.85;
+    const r = e.r*(1-p*0.45);
+    const grad = ctx.createRadialGradient(e.x,e.y,0,e.x,e.y,r);
+    grad.addColorStop(0,'#fff6d8'); grad.addColorStop(0.35,'#f79a1f'); grad.addColorStop(1,'rgba(180,40,0,0)');
+    ctx.fillStyle = grad; cir(ctx, e.x, e.y, r);
+    ctx.strokeStyle = 'rgba(255,220,140,'+(p*0.7)+')'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(e.x,e.y,r*0.96,0,TAU); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  /* 玩家 */
+  drawPlayer();
+
+  /* 悬浮激光匕首 */
+  drawLaserKnife();
+
+  /* 丧尸（按 y 排序，近的在最后） */
+  const sorted = zombies.slice().sort((a,b) => a.y - b.y);
+  for (const z of sorted) drawZombie(z);
+
+  /* 伤害飘字 */
+  ctx.textAlign = 'center';
+  for (const t of texts){
+    ctx.globalAlpha = Math.min(1, t.t*2);
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillText(t.str, t.x+1, t.y+1);
+    ctx.fillStyle = t.color;          ctx.fillText(t.str, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+
+  /* 墙壁 */
+  drawWalls();
+
+  ctx.restore();
+
+  /* 低血量警示 */
+  if (state === 'play' && player && player.hp <= 2){
+    ctx.fillStyle = 'rgba(170,16,16,' + (0.07 + 0.05*Math.sin(Date.now()/150)) + ')';
+    ctx.fillRect(0,0,W,H);
+  }
+}
+
+function drawWalls(){
+  ctx.fillStyle = '#3b3025';
+  ctx.fillRect(0,0,W,WALL); ctx.fillRect(0,H-WALL,W,WALL);
+  ctx.fillRect(0,0,WALL,H); ctx.fillRect(W-WALL,0,WALL,H);
+  /* 砖纹 */
+  ctx.strokeStyle = 'rgba(20,15,10,.55)'; ctx.lineWidth = 1;
+  for (let x=0;x<W;x+=34){ lin(ctx, x, 0, x, WALL); lin(ctx, x, H-WALL, x, H); }
+  for (let y=0;y<H;y+=34){ lin(ctx, 0, y, WALL, y); lin(ctx, W-WALL, y, W, y); }
+  ctx.strokeStyle = '#6b5637'; ctx.lineWidth = 2;
+  ctx.strokeRect(WALL, WALL, W-WALL*2, H-WALL*2);
+  ctx.strokeStyle = 'rgba(120,40,20,.28)'; ctx.lineWidth = 1;
+  ctx.strokeRect(WALL+2, WALL+2, W-WALL*2-4, H-WALL*2-4);
+}
+
+function drawObstacles(){
+  for (const o of OBSTACLES){
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    if (o.type === 'rect'){ ctx.fillRect(o.x+3, o.y+4, o.w, o.h); }
+    else { cir(ctx, o.x+2, o.y+3, o.r); }
+    if (o.type === 'rect'){
+      const isTable = o.skin === 'table';
+      const base = isTable ? '#8a6a38' : '#6a5330';
+      const edge = isTable ? '#4f3a1b' : '#3f2f18';
+      ctx.fillStyle = base; ctx.fillRect(o.x, o.y, o.w, o.h);
+      ctx.fillStyle = 'rgba(255,225,170,.10)'; ctx.fillRect(o.x, o.y, o.w, 4);
+      ctx.fillStyle = 'rgba(0,0,0,.22)';       ctx.fillRect(o.x, o.y+o.h-5, o.w, 5);
+      ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.strokeRect(o.x+1, o.y+1, o.w-2, o.h-2);
+      /* 板条 / 桌面纹理 */
+      ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.lineWidth = 1;
+      if (isTable){
+        ctx.fillStyle = '#9c7c48'; ctx.fillRect(o.x+6, o.y+6, o.w-12, o.h-12);
+        ctx.strokeStyle = 'rgba(90,64,26,.45)';
+        for (let i=1;i<4;i++) lin(ctx, o.x+6+i*(o.w-12)/4, o.y+6, o.x+6+i*(o.w-12)/4, o.y+o.h-6);
+      } else {
+        for (let i=1;i<3;i++){
+          const xx = o.x + i*o.w/3; lin(ctx, xx, o.y+2, xx, o.y+o.h-2);
+        }
+        lin(ctx, o.x+2, o.y+2, o.x+o.w-2, o.y+o.h-2);
+        lin(ctx, o.x+o.w-2, o.y+2, o.x+2, o.y+o.h-2);
+        ctx.fillStyle = 'rgba(190,150,90,.22)';
+        ctx.fillRect(o.x+3, o.y+3, o.w-6, 3);
+      }
+    } else {
+      const base = o.skin === 'barrel' ? '#6b4f2c' : '#6b4f2c';
+      ctx.fillStyle = base; cir(ctx, o.x, o.y, o.r);
+      ctx.fillStyle = 'rgba(255,225,170,.12)';
+      ctx.beginPath(); ctx.ellipse(o.x-o.r*0.25, o.y-o.r*0.3, o.r*0.45, o.r*0.3, -0.6, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#3b2a13'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,TAU); ctx.stroke();
+      ctx.strokeStyle = '#8d7143'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(o.x,o.y,o.r*0.72,0,TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(o.x,o.y,o.r*0.36,0,TAU); ctx.stroke();
+    }
+    /* 受损裂纹 */
+    if (o.hp < o.maxHp){
+      const p = 1 - o.hp/o.maxHp;
+      ctx.strokeStyle = 'rgba(20,10,6,' + Math.min(0.85, p*1.2) + ')';
+      ctx.lineWidth = 1.3;
+      const cx = o.type==='rect' ? o.x+o.w/2 : o.x;
+      const cy = o.type==='rect' ? o.y+o.h/2 : o.y;
+      for (let i=0;i<3;i++){
+        const a = o.seed + i*2.1;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a)*3, cy + Math.sin(a)*3);
+        ctx.lineTo(cx + Math.cos(a+0.4)*(o.type==='rect'?o.w*0.42:o.r*0.9), cy + Math.sin(a+0.4)*(o.type==='rect'?o.h*0.42:o.r*0.9));
+        ctx.lineTo(cx + Math.cos(a-0.25)*(o.type==='rect'?o.w*0.55:o.r*1.05), cy + Math.sin(a-0.25)*(o.type==='rect'?o.h*0.55:o.r*1.05));
+        ctx.stroke();
+      }
+    }
+    if (o.hitFlash > 0){
+      ctx.globalAlpha = o.hitFlash*3.2;
+      ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2.5;
+      if (o.type==='rect') ctx.strokeRect(o.x-1,o.y-1,o.w+2,o.h+2);
+      else { ctx.beginPath(); ctx.arc(o.x,o.y,o.r+2,0,TAU); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+}
+
+const ITEM_LOOK = {
+  health:'#f0473c', stick:'#b07a42', saw:'#f0912a', smg:'#4a6285',
+  cannon:'#f0912a', tank:'#f5c542', laserKnife:'#ff3b3b',
+  strength:'#ff5fa2', slowPotion:'#49a7f5',
+};
+function drawItems(){
+  for (const it of items){
+    const oy = Math.sin(it.bob)*4;
+    ctx.save(); ctx.translate(it.x, it.y+oy);
+    const col = ITEM_LOOK[it.type] || '#fff';
+    /* 地面光晕 */
+    const gr = ctx.createRadialGradient(0,0,0,0,0,20);
+    gr.addColorStop(0, col); gr.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.30 + Math.sin(it.bob*2)*0.12;
+    ctx.fillStyle = gr; cir(ctx, 0, 0, 20);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.55 + Math.sin(it.bob*2)*0.25;
+    cir(ctx, 0, 0, 15);
+    ctx.globalAlpha = 1;
+    switch (it.type){
+      case 'health':
+        ctx.fillStyle = '#f7f7f7'; rrect(ctx,-10,-10,20,20,3); ctx.fill();
+        ctx.strokeStyle = '#c9ccc8'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#e33d33'; ctx.fillRect(-7,-2.5,14,5); ctx.fillRect(-2.5,-7,5,14);
+        break;
+      case 'stick':
+        ctx.strokeStyle = '#b07a42'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+        lin(ctx,-13,7,15,-11); ctx.restore();
+        ctx.save(); ctx.translate(it.x, it.y+oy);
+        ctx.strokeStyle = '#8b5e2f'; ctx.lineWidth = 2; lin(ctx,-13,7,15,-11);
+        break;
+      case 'saw':
+        ctx.fillStyle = '#f0912a'; rrect(ctx,-11,-8,21,16,3); ctx.fill();
+        ctx.fillStyle = '#5b6669'; rrect(ctx,-13,-3,6,6,2); ctx.fill();
+        ctx.fillStyle = '#b8c4c7'; poly(ctx,[9,-6,23,-2,23,2,9,6,11,0]); ctx.fill();
+        break;
+      case 'smg':
+        ctx.fillStyle = '#2f3d4f'; rrect(ctx,-13,-6,26,12,2); ctx.fill();
+        ctx.fillStyle = '#1d2733'; ctx.fillRect(9,-3,9,6);
+        ctx.fillStyle = '#4a6285'; ctx.fillRect(-6,4,7,7);
+        break;
+      case 'cannon':
+        ctx.fillStyle = '#5d4037'; rrect(ctx,-16,-11,32,20,3); ctx.fill();
+        ctx.fillStyle = '#3e2723'; rrect(ctx,-8,6,16,9,2); ctx.fill();
+        ctx.fillStyle = '#f0912a'; cir(ctx, 0, -2, 6.5);
+        ctx.fillStyle = 'rgba(255,255,255,.5)'; cir(ctx, -2, -4, 2);
+        break;
+      case 'tank':
+        ctx.fillStyle = '#2f7d3a'; rrect(ctx,-18,-8,36,16,3); ctx.fill();
+        ctx.fillStyle = '#1d5a27'; ctx.fillRect(-18,4,36,5);
+        ctx.fillStyle = '#33475b'; rrect(ctx,-6,-19,12,11,2); ctx.fill();
+        ctx.fillStyle = '#f5c542'; cir(ctx, 0, -13, 2.5);
+        break;
+      case 'laserKnife':
+        ctx.fillStyle = '#ff3b3b'; poly(ctx,[0,-13,5,-2,0,13,-5,-2]); ctx.fill();
+        ctx.fillStyle = '#ffd6d6'; poly(ctx,[0,-9,2.4,-2,0,9,-2.4,-2]); ctx.fill();
+        break;
+      case 'strength':
+        ctx.fillStyle = '#ff5fa2'; rrect(ctx,-6,-9,12,17,3); ctx.fill();
+        ctx.fillStyle = '#ffd7e8'; rrect(ctx,-3.5,-6,7,11,2); ctx.fill();
+        ctx.fillStyle = '#a12b68'; ctx.fillRect(-3.5,-13,7,5);
+        break;
+      case 'slowPotion':
+        ctx.fillStyle = '#49a7f5'; rrect(ctx,-6,-9,12,17,3); ctx.fill();
+        ctx.fillStyle = '#d6efff'; rrect(ctx,-3.5,-6,7,11,2); ctx.fill();
+        ctx.fillStyle = '#1867ac'; ctx.fillRect(-3.5,-13,7,5);
+        break;
+    }
+    ctx.restore();
+  }
+}
+
+function drawZombie(z){
+  const g = ctx;
+  g.save(); g.translate(z.x, z.y);
+
+  /* 登场特效 */
+  if (z.spawnT > 0){
+    const p = 1 - z.spawnT/0.8;
+    g.globalAlpha = 0.28 + p*0.72;
+    g.strokeStyle = z.elite ? '#ff5b3c' : '#8fd14f';
+    g.lineWidth = 2; g.setLineDash([5,4]);
+    g.beginPath(); g.arc(0,0, z.r + 16*(1-p), 0, TAU); g.stroke();
+    g.setLineDash([]);
+  }
+
+  const flash = z.flash > 0, slow = z.slowT > 0;
+  const bodyC  = z.elite ? (flash ? '#ffdede' : slow ? '#4a6796' : '#5c7a2e')
+                         : (flash ? '#ffeaea' : slow ? '#5f92c4' : '#6da342');
+  const torsoC = z.elite ? (flash ? '#ffcfcf' : slow ? '#3b5380' : '#3f5620')
+                         : (flash ? '#f6d5d5' : slow ? '#4c7aa8' : '#4b7530');
+  const limbC  = z.elite ? (flash ? '#f3c4c4' : slow ? '#2f4470' : '#2f4018')
+                         : (flash ? '#f0cccc' : slow ? '#3d6490' : '#3a5a22');
+  const r = z.r;
+
+  /* 影子 */
+  g.fillStyle = 'rgba(0,0,0,.38)';
+  ell(g, 3, 4, r*1.02, r*0.82);
+
+  /* 精英：红色威压光环 */
+  if (z.elite){
+    g.strokeStyle = 'rgba(220,50,40,' + (0.30 + 0.18*Math.sin(z.aura)) + ')';
+    g.lineWidth = 2.5;
+    g.beginPath(); g.arc(0, 0, r + 7 + Math.sin(z.aura)*2, 0, TAU); g.stroke();
+    g.strokeStyle = 'rgba(255,110,60,.16)'; g.lineWidth = 6;
+    g.beginPath(); g.arc(0, 0, r + 6, 0, TAU); g.stroke();
+  }
+
+  g.rotate(z.angle);
+  const sw = Math.sin(z.wob)*0.32;
+  const lp = Math.sin(z.legPhase)*r*0.34;
+
+  /* 腿（拖步） */
+  g.fillStyle = limbC; g.lineCap = 'round';
+  g.strokeStyle = limbC; g.lineWidth = Math.max(3, r*0.30);
+  lin(g, -r*0.15, -r*0.42, -r*0.62 - lp*0.4, -r*0.52 + lp*0.3);
+  lin(g, -r*0.15,  r*0.42, -r*0.62 + lp*0.4,  r*0.52 - lp*0.3);
+
+  /* 躯干 */
+  g.fillStyle = torsoC; ell(g, -r*0.12, 0, r*0.92, r*0.76);
+  g.fillStyle = bodyC;  ell(g, -r*0.02, 0, r*0.80, r*0.66);
+  /* 伤口 / 补丁 */
+  g.fillStyle = 'rgba(90,16,14,.55)';
+  cir(g, -r*0.28, -r*0.24, r*0.15); cir(g, r*0.06, r*0.26, r*0.12);
+  if (z.elite){
+    g.fillStyle = 'rgba(40,20,8,.4)';
+    cir(g, -r*0.05, -r*0.1, r*0.2);
+  }
+
+  /* 双臂：僵直前伸 */
+  g.strokeStyle = limbC; g.lineWidth = Math.max(3.4, r*0.26);
+  const reach = r*1.15;
+  lin(g, r*0.30, -r*0.52, reach, -r*0.46 + sw*r);
+  lin(g, r*0.30,  r*0.52, reach,  r*0.46 - sw*r);
+  g.fillStyle = z.elite ? '#c9b98a' : '#93b06a';
+  cir(g, reach, -r*0.46 + sw*r, r*0.17);
+  cir(g, reach,  r*0.46 - sw*r, r*0.17);
+
+  /* 精英：肩部骨刺 */
+  if (z.elite){
+    g.fillStyle = '#d8cc9e';
+    poly(g, [r*0.05,-r*0.78, r*0.22,-r*1.22, r*0.34,-r*0.72]); g.fill();
+    poly(g, [r*0.05, r*0.78, r*0.22, r*1.22, r*0.34, r*0.72]); g.fill();
+  }
+
+  /* 头 */
+  g.fillStyle = bodyC;  ell(g, r*0.44, 0, r*0.50, r*0.44);
+  g.fillStyle = '#2b2a20';  /* 头发乱块 */
+  ell(g, r*0.30, -r*0.22, r*0.30, r*0.22, 0.4);
+  ell(g, r*0.26,  r*0.24, r*0.26, r*0.20, -0.4);
+  /* 精英：头顶骨冠 */
+  if (z.elite){
+    g.fillStyle = '#e4d9ac';
+    poly(g, [r*0.30,-r*0.34, r*0.40,-r*0.62, r*0.50,-r*0.34]); g.fill();
+    poly(g, [r*0.52,-r*0.28, r*0.62,-r*0.58, r*0.70,-r*0.26]); g.fill();
+    poly(g, [r*0.32, r*0.34, r*0.42, r*0.62, r*0.52, r*0.34]); g.fill();
+    poly(g, [r*0.54, r*0.28, r*0.64, r*0.58, r*0.72, r*0.26]); g.fill();
+  }
+  /* 眼睛（红眼 + 光晕） */
+  const eyeSize = z.elite ? r*0.155 : r*0.13;
+  g.fillStyle = 'rgba(255,40,30,.22)';
+  cir(g, r*0.60, -r*0.19, eyeSize*2.3);
+  cir(g, r*0.60,  r*0.19, eyeSize*2.3);
+  g.fillStyle = z.elite ? '#ff2d1f' : '#e8302a';
+  cir(g, r*0.60, -r*0.19, eyeSize);
+  cir(g, r*0.60,  r*0.19, eyeSize);
+  g.fillStyle = 'rgba(255,210,190,.85)';
+  cir(g, r*0.62, -r*0.20, eyeSize*0.42);
+  cir(g, r*0.62,  r*0.18, eyeSize*0.42);
+
+  g.restore();
+
+  /* 血量标记 */
+  if (z.spawnT <= 0 && (z.hp < z.maxHp || z.elite)){
+    const ty = z.y - z.r - 11;
+    g.save();
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(z.x-22, ty-8, 44, 14);
+    g.fillStyle = z.elite ? '#ff8a5c' : '#ff6b6b';
+    g.textAlign = 'center';
+    drawHealthTag(g, z.x, ty, z.hp, 1);
+    g.restore();
+  }
+  /* 精英等级标 */
+  if (z.elite && z.spawnT <= 0){
+    g.save();
+    g.font = 'bold 10px system-ui, sans-serif'; g.textAlign = 'center';
+    g.fillStyle = 'rgba(0,0,0,.6)';
+    g.fillText('\u2605 Lv.' + z.level, z.x, z.y - z.r - 26);
+    g.fillStyle = '#ffbe4d';
+    g.fillText('\u2605 Lv.' + z.level, z.x, z.y - z.r - 27);
+    g.restore();
+  }
+}
+
+function drawPlayer(){
+  const g = ctx;
+  if (player.inv > 0 && Math.floor(player.inv*14) % 2 === 0) return;
+  g.save(); g.translate(player.x, player.y);
+
+  const r = player.r;
+  const wid = currentWeaponId(), w = WEAPONS[wid];
+
+  /* 影子 */
+  g.fillStyle = 'rgba(0,0,0,.4)';
+  ell(g, 3, 4, r*1.0, r*0.8);
+
+  /* 腿（走路摆动） */
+  const lp = Math.sin(player.walk)*r*0.36;
+  g.strokeStyle = '#2c3340'; g.lineWidth = Math.max(3, r*0.28); g.lineCap = 'round';
+  lin(g, -r*0.1, -r*0.4, -r*0.1 - lp*0.5, -r*0.62);
+  lin(g, -r*0.1,  r*0.4, -r*0.1 + lp*0.5,  r*0.62);
+
+  g.rotate(player.angle);
+
+  /* 背包 */
+  g.fillStyle = '#6b4b28'; rrect(g, -r*0.95, -r*0.5, r*0.5, r*1.0, 3); g.fill();
+  g.strokeStyle = '#4a331a'; g.lineWidth = 1.5; g.stroke();
+
+  /* 躯干（帽衫） */
+  g.fillStyle = '#2b6ba8'; ell(g, 0, 0, r*0.9, r*0.74);
+  g.fillStyle = '#3a80c4'; ell(g, r*0.1, -r*0.18, r*0.55, r*0.44);
+  g.fillStyle = 'rgba(255,255,255,.10)'; ell(g, r*0.05, -r*0.3, r*0.5, r*0.22);
+
+  /* 武器 */
+  const handX = r*0.6;
+  if (w.type === 'melee'){
+    const len = r*0.7 + w.base*3.4;
+    if (wid === 'hand'){
+      g.fillStyle = '#e8b98a'; cir(g, handX, -r*0.5, r*0.2); cir(g, handX, r*0.5, r*0.2);
+      g.strokeStyle = '#e8b98a'; g.lineWidth = 5;
+      lin(g, r*0.45, -r*0.55, r*0.95, -r*0.5);
+    } else if (wid === 'stick'){
+      g.strokeStyle = '#a8763f'; g.lineWidth = 5.5;
+      lin(g, handX, -r*0.15, handX + len, -r*0.05);
+      g.strokeStyle = '#7c5528'; g.lineWidth = 2;
+      lin(g, handX+len*0.4, -r*0.1, handX+len*0.4, r*0.12);
+    } else {
+      g.fillStyle = '#e07a1f'; rrect(g, handX-3, -r*0.42, len*0.55, r*0.84, 3); g.fill();
+      g.fillStyle = '#9aa7ac';
+      const tw = Math.sin(Date.now()/40)*3;
+      poly(g, [handX+len*0.55, -r*0.34, handX+len+2+tw, -r*0.12, handX+len+2+tw, r*0.12, handX+len*0.55, r*0.34]);
+      g.fill();
+      g.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(handX, -r*0.38, len*0.5, 2);
+    }
+    /* 持械手臂 */
+    g.strokeStyle = '#2b6ba8'; g.lineWidth = Math.max(3.2, r*0.24);
+    lin(g, r*0.15, 0, handX, 0);
+  } else {
+    let bx = handX, bw;
+    if (wid === 'smg'){
+      g.fillStyle = '#28323f'; rrect(g, bx, -r*0.24, r*1.5, r*0.48, 2); g.fill();
+      g.fillStyle = '#3b4a5c'; rrect(g, bx+r*1.4, -r*0.13, r*0.55, r*0.26, 1); g.fill();
+      bw = r*1.9;
+    } else if (wid === 'cannon'){
+      g.fillStyle = '#5d4037'; rrect(g, bx-4, -r*0.42, r*1.5, r*0.84, 3); g.fill();
+      g.fillStyle = '#e8891f'; cir(g, bx+r*1.35, 0, r*0.26);
+      bw = r*1.7;
+    } else {
+      g.fillStyle = '#2f7d3a'; rrect(g, bx-6, -r*0.40, r*1.8, r*0.80, 3); g.fill();
+      g.fillStyle = '#22303f'; rrect(g, bx+r*1.5, -r*0.18, r*0.7, r*0.36, 2); g.fill();
+      bw = r*2.2;
+    }
+    g.strokeStyle = '#2b6ba8'; g.lineWidth = Math.max(3.2, r*0.24);
+    lin(g, r*0.15, 0, bx, 0);
+  }
+
+  /* 连帽 + 头 */
+  g.fillStyle = '#245c92'; ell(g, -r*0.16, 0, r*0.5, r*0.52);
+  g.fillStyle = '#f0c49a'; ell(g, r*0.30, 0, r*0.44, r*0.38);
+  g.fillStyle = '#3b2a18';
+  ell(g, r*0.24, -r*0.16, r*0.34, r*0.20, 0.4);
+  ell(g, r*0.24,  r*0.16, r*0.30, r*0.18, -0.4);
+  /* 眼神（看向瞄准方向） */
+  g.fillStyle = '#20242c';
+  cir(g, r*0.44, -r*0.14, r*0.075); cir(g, r*0.44, r*0.14, r*0.075);
+
+  g.restore();
+
+  /* 头顶血量 */
+  const ty = player.y - player.r - 14;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(player.x-26, ty-9, 52, 15);
+  ctx.fillStyle = '#ff6b6b'; ctx.textAlign = 'center';
+  drawHealthTag(ctx, player.x, ty, player.hp, 1.15);
+  ctx.restore();
+
+  /* 低血量警示 */
+  if (player.hp <= 2){
+    ctx.strokeStyle = 'rgba(255,60,50,' + (0.35+0.25*Math.sin(Date.now()/140)) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 8 + Math.sin(Date.now()/180)*2, 0, TAU); ctx.stroke();
+  }
+}
+
+function drawLaserKnife(){
+  if (!laserKnifeActive) return;
+  const g = ctx;
+  const radius = 50 + laserKnifeRange*10;
+  /* 环绕轨迹 */
+  g.strokeStyle = 'rgba(255,50,50,' + (0.22 + 0.12*Math.sin(Date.now()/180)) + ')';
+  g.lineWidth = 2;
+  g.beginPath(); g.arc(player.x, player.y, radius, 0, TAU); g.stroke();
+  g.strokeStyle = 'rgba(255,120,90,.10)'; g.lineWidth = 8;
+  g.beginPath(); g.arc(player.x, player.y, radius, 0, TAU); g.stroke();
+
+  for (let i=0;i<3;i++){
+    const a = laserAngle + i*TAU/3;
+    const kx = player.x + Math.cos(a)*radius, ky = player.y + Math.sin(a)*radius;
+    g.save(); g.translate(kx, ky); g.rotate(a + Math.PI/2);
+    g.fillStyle = 'rgba(255,60,50,.28)'; cir(g, 0, 0, 11);
+    g.fillStyle = '#ff4a4a'; poly(g, [0,-9, 4.5,3, 0,13, -4.5,3]); g.fill();
+    g.fillStyle = '#ffd2d2'; poly(g, [0,-6, 2.4,2, 0,9, -2.4,2]); g.fill();
+    g.restore();
+  }
+  /* 剩余时间条 */
+  const p = laserKnifeTimer/10;
+  g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(player.x-26, player.y+player.r+8, 52, 5);
+  g.fillStyle = '#ff3b3b';       g.fillRect(player.x-26, player.y+player.r+8, 52*p, 5);
+}
+
+/* ==================================================================
+   8. HUD / 结算
+   ================================================================== */
+function hpHtml(hp){
+  const n = Math.max(0, Math.floor(hp));
+  return n < 5 ? '\u2764\uFE0F'.repeat(n) : '\u2764\uFE0F\u00D7' + n;
+}
+function updateHUD(){
+  const hpEl = document.getElementById('hp-display');
+  hpEl.innerHTML = hpHtml(player.hp);
+  document.getElementById('hp-card').classList.toggle('warn', player.hp <= 2);
+  document.getElementById('plevel').textContent = player.level;
+  document.getElementById('xpfill').style.width = (player.xp/3*100) + '%';
+  document.getElementById('weapon').textContent = currentWeapon().name + (laserKnifeActive ? ' + \uD83D\uDD2A' : '');
+  document.getElementById('timed').textContent = player.timedWeapon
+    ? WEAPONS[player.timedWeapon.type].name + ' ' + player.timedWeapon.timer.toFixed(1) + 's' : '无';
+  let ec = 0; for (const z of zombies) if (z.elite) ec++;
+  document.getElementById('zcount').textContent = zombies.length;
+  document.getElementById('elite-count').textContent = ec;
+  document.getElementById('zinfo').textContent = 'Lv' + zombieLevel;
+  const t = Math.max(0, gameTime);
+  const m = Math.floor(t/60), s = Math.floor(t%60);
+  document.getElementById('time').textContent = m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function endGame(win){
+  state = win ? 'win' : 'lose';
+  const titleEl = document.getElementById('end-title');
+  const iconEl  = document.getElementById('end-icon');
+  const subEl   = document.getElementById('end-sub');
+  if (win){
+    titleEl.textContent = '逃出生天';
+    titleEl.classList.add('win');
+    iconEl.textContent  = '\uD83C\uDF89';
+    subEl.textContent   = 'YOU SURVIVED · 3:30';
+  } else {
+    titleEl.textContent = '你被丧尸吃掉了';
+    titleEl.classList.remove('win');
+    iconEl.textContent  = '\uD83D\uDC80';
+    subEl.textContent   = 'GAME OVER';
+  }
+  document.getElementById('st-kill').textContent  = kills;
+  document.getElementById('st-elite').textContent = eliteKills;
+  document.getElementById('st-lv').textContent    = player.level;
+  document.getElementById('st-zlv').textContent   = zombieLevel;
+  const sv = Math.min(elapsed, TOTAL_TIME);
+  document.getElementById('st-time').textContent  = Math.floor(sv/60) + ':' + (Math.floor(sv%60) < 10 ? '0' : '') + Math.floor(sv%60);
+  ovStartEl.classList.add('hidden');
+  ovEndEl.classList.remove('hidden');
+  overlayEl.classList.remove('hidden');
+}
+
+/* ==================================================================
+   9. 输入 / 启动
+   ================================================================== */
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (k === ' ' || k.indexOf('arrow') === 0) e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+cv.addEventListener('mousedown', e => { if (e.button === 0) mouse.down = true; });
+addEventListener('mouseup', () => { mouse.down = false; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('touchstart', e => { e.preventDefault(); mouse.down = true; }, { passive:false });
+cv.addEventListener('touchmove',  e => { const t = e.touches[0]; mouse.x = t.clientX; mouse.y = t.clientY; }, { passive:false });
+cv.addEventListener('touchend',   () => { mouse.down = false; });
+
+function startGame(){
+  initGame();
+  overlayEl.classList.add('hidden');
+  ovStartEl.classList.add('hidden');
+  ovEndEl.classList.add('hidden');
+  state = 'play';
+}
+document.getElementById('btn').addEventListener('click', startGame);
+document.getElementById('btn2').addEventListener('click', startGame);
+
+/* ==================================================================
+   10. 主循环（带异常隔离：任何单帧异常都不会冻结画面）
+   ================================================================== */
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now - last)/1000);
+  last = now;
+  if (state === 'play'){
+    try {
+      update(dt);
+    } catch (err) {
+      console.error('[update]', err);
+      showBanner('\u26A0 \u5DF2\u5FFD\u7565\u4E00\u4E2A\u5E27\u5F02\u5E38\uFF0C\u6E38\u620F\u7EE7\u7EED\u8FD0\u884C');
+    }
+    if (state === 'play'){
+      try {
+        draw();
+        updateHUD();
+      } catch (err) {
+        console.error('[draw]', err);
+      }
+    }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
